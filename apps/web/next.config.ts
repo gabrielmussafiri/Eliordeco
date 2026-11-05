@@ -21,7 +21,9 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
-    remotePatterns: [{ protocol: "http", hostname: "localhost", port: "8000", pathname: "/media/**" }],
+    // Sur Vercel avec deux services (site + API), l'optimiseur /_next/image n'est pas joignable (404) : les images
+    // sont servies telles quelles (photos déjà réduites à l'envoi, mises en cache un an par /media).
+    unoptimized: true,
   },
 };
 
