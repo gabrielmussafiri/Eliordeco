@@ -157,7 +157,7 @@ def run(demo: bool = False):
                 p.images.append(ProductImage(url=f"/media/{key}", alt=name, sort_order=n))
         # Réglages de départ : aucune valeur factice publiée (numéro WhatsApp, email, coordonnées bancaires) —
         # le propriétaire les renseigne dans Admin → Settings. Avec --demo, des valeurs d'exemple sont ajoutées.
-        base = {"business_address": "Houston, TX & surrounding areas", "delivery_enabled": True, "delivery_fee": "0.00",
+        base = {"business_address": "Houston, TX & surrounding areas", "timezone": "America/Chicago", "delivery_enabled": True, "delivery_fee": "0.00",
                 "payment_methods": ["Zelle", "Cash App", "Bank transfer", "Cash"]}
         # Coordonnées réelles fournies à l'exécution (variables d'environnement) pour ne rien écrire dans le dépôt.
         if os.environ.get("SEED_WHATSAPP_NUMBER"):
