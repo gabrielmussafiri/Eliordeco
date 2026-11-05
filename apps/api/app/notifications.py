@@ -190,33 +190,33 @@ def _admin(path: str) -> str:
     return f"{cfg.public_url.rstrip('/')}{path}"
 
 
-def _owner(s: dict) -> str | None:
-    to = (s.get("contact_email") or "").strip()
-    return to if "@" in to else None
+def _owners(s: dict) -> list[str]:
+    """Destinataires des alertes : la liste privée si elle existe, sinon l'email de contact public."""
+    listed = [e.strip() for e in (s.get("notification_emails") or []) if "@" in str(e)]
+    if listed:
+        return list(dict.fromkeys(listed))[:5]
+    one = (s.get("contact_email") or "").strip()
+    return [one] if "@" in one else []
 
 
-def owner_new_request(b: Booking, s: dict) -> Message | None:
-    to = _owner(s)
-    if not to:
-        return None
-    return _msg(to, f"New booking request {b.reference}", "owner_new_request", b, s, "New booking request",
+def owner_new_request(b: Booking, s: dict) -> list[Message]:
+    return [_msg(to, f"New booking request {b.reference}", "owner_new_request", b, s, "New booking request",
                 [f"{b.customer.full_name} ({b.customer.email}, {b.customer.phone}) sent a request that needs your review."],
-                _summary(b, s), ("Review request", _admin(f"/admin/bookings/{b.reference}")))
+                _summary(b, s), ("Review request", _admin(f"/admin/bookings/{b.reference}"))) for to in _owners(s)]
 
 
-def owner_payment_submitted(b: Booking, p: PaymentRecord, s: dict) -> Message | None:
-    to = _owner(s)
-    if not to:
-        return None
-    return _msg(to, f"Payment to verify — {b.reference}", "owner_payment_submitted", b, s, "A payment needs verifying",
+def owner_payment_submitted(b: Booking, p: PaymentRecord, s: dict) -> list[Message]:
+    return [_msg(to, f"Payment to verify — {b.reference}", "owner_payment_submitted", b, s, "A payment needs verifying",
                 [f"{b.customer.full_name} says they paid {_money(p.amount)} by {p.method}"
                  + (f" (ref {p.transaction_reference})" if p.transaction_reference else "") + ". Check your account, then verify or reject it."],
                 [("Reference", b.reference), ("Amount", _money(p.amount)), ("Method", p.method)],
-                ("Review payment", _admin("/admin/payments")))
+                ("Review payment", _admin("/admin/payments"))) for to in _owners(s)]
 
 
-def queue(background, messages: list[Message | None]) -> None:
-    """Planifie l'envoi après la réponse HTTP (jamais bloquant, jamais bloquant pour la requête)."""
+def queue(background, messages: list) -> None:
+    """Planifie l'envoi après la réponse HTTP (ne bloque jamais la requête). Accepte des listes imbriquées."""
     for m in messages:
-        if m:
+        if isinstance(m, list):
+            queue(background, m)
+        elif m:
             background.add_task(deliver, m)

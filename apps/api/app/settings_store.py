@@ -4,7 +4,8 @@ from .models import BusinessSetting
 
 DEFAULTS: dict = {
     "business_name": "Favor Upon You Rentals",
-    "contact_email": "",
+    "contact_email": "",          # public (page Contact)
+    "notification_emails": [],    # privé : destinataires des alertes (demandes, paiements), 5 max
     "whatsapp_number": "",  # format international sans "+", ex. 15551234567
     "business_address": "",
     "timezone": "America/New_York",

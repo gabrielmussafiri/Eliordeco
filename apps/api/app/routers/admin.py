@@ -515,6 +515,12 @@ def write_settings(body: dict, user: User = Depends(require_owner), db: Session 
             raise HTTPException(422, "Invalid timezone")
     if "whatsapp_number" in body and body["whatsapp_number"] and not re.fullmatch(r"\+?\d{8,15}", str(body["whatsapp_number"])):
         raise HTTPException(422, "WhatsApp number must be 8-15 digits (international format)")
+    if "notification_emails" in body:
+        mails = body["notification_emails"]
+        if not isinstance(mails, list) or len(mails) > 5 or not all(
+                isinstance(m, str) and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", m.strip()) for m in mails):
+            raise HTTPException(422, "Alert emails: up to 5 valid email addresses.")
+        body["notification_emails"] = list(dict.fromkeys(m.strip().lower() for m in mails))
     if "deposit_percentage" in body and not 0 <= float(body["deposit_percentage"]) <= 100:
         raise HTTPException(422, "Deposit percentage must be between 0 and 100")
     for k, v in body.items():

@@ -138,3 +138,17 @@ def test_provider_receives_expected_payload(client, umbrella, monkeypatch):
     assert kw["headers"]["Authorization"] == "Bearer re_test" and kw["json"]["to"] == ["ana@example.com"]
     with SessionLocal() as s:
         assert {l.status for l in s.scalars(select(NotificationLog))} == {"sent"}
+
+
+def test_alerts_go_to_every_listed_address_and_stay_private(client, umbrella):
+    login(client)
+    r = client.put("/api/admin/settings", headers=H, json={"notification_emails": ["One@gmail.com", "two@gmail.com", "one@gmail.com"]})
+    assert r.status_code == 200 and r.json()["notification_emails"] == ["one@gmail.com", "two@gmail.com"]  # dédoublonné
+    assert client.put("/api/admin/settings", headers=H, json={"notification_emails": ["not-an-email"]}).status_code == 422
+    assert client.put("/api/admin/settings", headers=H, json={"notification_emails": [f"a{i}@x.com" for i in range(6)]}).status_code == 422
+    notify.outbox.clear()
+    client.post("/api/bookings", json=payload(umbrella))
+    got = {m.to for m in notify.outbox if m.template == "owner_new_request"}
+    assert got == {"one@gmail.com", "two@gmail.com"}            # un message par adresse, et plus l'email de contact
+    assert "owner@studio.test" not in got
+    assert "one@gmail.com" not in client.get("/api/settings/public").text  # jamais exposées au public

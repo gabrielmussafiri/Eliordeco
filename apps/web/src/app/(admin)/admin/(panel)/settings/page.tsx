@@ -17,7 +17,7 @@ export default function SettingsPage() {
 
 function Form({ s, reload }: { s: AdminSettings; reload: () => void }) {
   const [v, setV] = useState({
-    business_name: s.business_name, contact_email: s.contact_email, whatsapp_number: s.whatsapp_number, business_address: s.business_address,
+    business_name: s.business_name, contact_email: s.contact_email, notification_emails: (s.notification_emails ?? []).join(", "), whatsapp_number: s.whatsapp_number, business_address: s.business_address,
     timezone: s.timezone, rental_policies: s.rental_policies, cancellation_policy: s.cancellation_policy,
     payment_instructions: s.payment_instructions, payment_methods: s.payment_methods.join(", "),
     deposit_percentage: String(s.deposit_percentage), delivery_enabled: s.delivery_enabled, delivery_fee: String(s.delivery_fee),
@@ -34,7 +34,8 @@ function Form({ s, reload }: { s: AdminSettings; reload: () => void }) {
 
   const save = () => run(async () => {
     await put("/api/admin/settings", {
-      business_name: v.business_name, contact_email: v.contact_email, whatsapp_number: v.whatsapp_number.replace(/[^\d]/g, ""),
+      business_name: v.business_name, contact_email: v.contact_email,
+      notification_emails: v.notification_emails.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean), whatsapp_number: v.whatsapp_number.replace(/[^\d]/g, ""),
       business_address: v.business_address, timezone: v.timezone, rental_policies: v.rental_policies, cancellation_policy: v.cancellation_policy,
       payment_instructions: v.payment_instructions, payment_methods: v.payment_methods.split(",").map((x) => x.trim()).filter(Boolean),
       deposit_percentage: Number(v.deposit_percentage), delivery_enabled: v.delivery_enabled, delivery_fee: v.delivery_fee || "0",
@@ -49,6 +50,8 @@ function Form({ s, reload }: { s: AdminSettings; reload: () => void }) {
       <PageHeader eyebrow="Owner only" title="Business settings" />
       <Panel title="Business" id="b"><div className="grid gap-6 sm:grid-cols-2">
         {text("business_name", "Business name")}{text("contact_email", "Contact email", { type: "email" })}
+        <div className="sm:col-span-2">{text("notification_emails", "Send booking and payment alerts to (up to 5 emails, separated by commas)", { placeholder: "you@gmail.com, partner@gmail.com" })}
+          <p className="mt-2 text-xs text-ink-soft">Private: never shown on the website. If empty, alerts go to the contact email above. Alerts are only sent once email sending is set up.</p></div>
         {text("whatsapp_number", "WhatsApp number", { inputMode: "tel", placeholder: "15551234567" })}
         <div><label htmlFor="tz" className="eyebrow block">Timezone</label>
           <select id="tz" value={v.timezone} onChange={(e) => set("timezone", e.target.value)} className={selectCls}>{[...new Set([v.timezone, ...ZONES])].map((z) => <option key={z}>{z}</option>)}</select></div>
