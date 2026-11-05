@@ -4,7 +4,7 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -34,7 +34,7 @@ from ..services import (
     record_admin_payment, recompute_payment_status, review_payment, verified_total,
 )
 from ..settings_store import DEFAULTS, get_settings, set_setting
-from ..storage import private_path, save_upload
+from ..storage import load, read_validated, store
 
 router = APIRouter(prefix="/api/admin")
 limit_login = RateLimiter(8, 300, "login")
@@ -164,7 +164,8 @@ def update_product(pid: int, body: ProductIn, user: User = Depends(current_admin
 async def add_image(pid: int, file: UploadFile = File(), user: User = Depends(current_admin),
                     db: Session = Depends(get_db)):
     p = db.get(Product, pid) or _404()
-    key, _, _ = await save_upload(file, private=False, allow_pdf=False)
+    data, ctype, ext = await read_validated(file, allow_pdf=False)
+    key = store(db, data, ctype, ext, private=False)
     img = ProductImage(product_id=p.id, url=f"/media/{key}", alt=p.name, sort_order=len(p.images))
     db.add(img)
     audit(db, user.id, "product.image_added", "product", p.id)
@@ -405,8 +406,9 @@ def admin_record_payment(ref: str, body: AdminPaymentIn, user: User = Depends(cu
 @router.get("/evidence/{eid}", dependencies=secured)
 def evidence(eid: int, db: Session = Depends(get_db)):
     ev = db.get(PaymentEvidence, eid) or _404()
-    return FileResponse(private_path(ev.storage_key), media_type=ev.content_type,
-                        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
+    f = load(db, ev.storage_key, private=True)
+    return Response(f.data, media_type=f.content_type,
+                    headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
 
 
 @router.get("/audit", dependencies=secured)

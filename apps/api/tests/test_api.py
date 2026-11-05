@@ -115,7 +115,7 @@ def test_upload_validation(client, umbrella):
     base = dict(headers={"X-Access-Token": tok}, data={"amount": "10", "method": "Zelle", "paid_on": T0.isoformat()})
     bad = client.post(f"/api/portal/{ref}/payments", **base, files={"receipt": ("x.png", io.BytesIO(b"<script>alert(1)</script>"), "image/png")})
     assert bad.status_code == 415
-    big = client.post(f"/api/portal/{ref}/payments", **base, files={"receipt": ("x.png", io.BytesIO(PNG + b"0" * (9 * 1024 * 1024)), "image/png")})
+    big = client.post(f"/api/portal/{ref}/payments", **base, files={"receipt": ("x.png", io.BytesIO(PNG + b"0" * (5 * 1024 * 1024)), "image/png")})
     assert big.status_code == 413
     over = client.post(f"/api/portal/{ref}/payments", headers=base["headers"], data={**base["data"], "amount": "9999"})
     assert over.status_code == 422
@@ -168,3 +168,27 @@ def test_public_categories_hide_empty_or_hidden_shelves(client, umbrella):
     login(client)
     assert {c["name"] for c in client.get("/api/admin/categories").json()} == {"Outdoor Umbrellas", "Empty Shelf", "Hidden Shelf"}
     assert client.get("/api/admin/categories", headers={}).status_code == 200
+
+
+def test_media_serves_public_photos_only_and_never_receipts(client, umbrella):
+    from app.models import ProductImage
+    from app.storage import store
+    with SessionLocal() as s:
+        photo = store(s, PNG, "image/png", ".png", private=False)
+        secret = store(s, PNG, "image/png", ".png", private=True)
+        s.add(ProductImage(product_id=umbrella.id, url=f"/media/{photo}", alt="x"))
+        s.commit()
+    r = client.get(f"/media/{photo}")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert "immutable" in r.headers["cache-control"] and r.headers["x-content-type-options"] == "nosniff"
+    assert client.get(f"/media/{secret}").status_code == 404   # un reçu n'est jamais public
+    assert client.get("/media/does-not-exist.png").status_code == 404
+
+
+def test_admin_photo_upload_is_stored_and_served(client, umbrella):
+    login(client)
+    r = client.post(f"/api/admin/products/{umbrella.id}/images", headers=H, files={"file": ("a.png", io.BytesIO(PNG), "image/png")})
+    assert r.status_code == 201
+    assert client.get(r.json()["url"]).content == PNG
+    bad = client.post(f"/api/admin/products/{umbrella.id}/images", headers=H, files={"file": ("a.png", io.BytesIO(b"%PDF-1.4 x"), "image/png")})
+    assert bad.status_code == 415   # un PDF n'est pas une photo produit

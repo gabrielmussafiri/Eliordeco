@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    JSON, Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer,
+    JSON, Boolean, LargeBinary, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer,
     Numeric, String, Text, UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -204,6 +204,17 @@ class PaymentRecord(Base, TimestampMixin):
 
     booking: Mapped[Booking] = relationship(back_populates="payments")
     evidence: Mapped[list[PaymentEvidence]] = relationship(cascade="all, delete-orphan")
+
+
+class StoredFile(Base):
+    """Fichier binaire (photo produit publique ou reçu privé). Voir app/storage.py."""
+    __tablename__ = "stored_files"
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    content_type: Mapped[str] = mapped_column(String(80))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    is_private: Mapped[bool] = mapped_column(Boolean, index=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class PaymentEvidence(Base):

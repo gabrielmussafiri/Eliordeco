@@ -1,4 +1,5 @@
 import { ApiError, type PricingUnit } from "./api";
+import { UploadError } from "./image";
 
 export interface QuoteLine {
   product_id: number; product_name: string; quantity: number; unit_price: number;
@@ -37,6 +38,7 @@ export const paymentStatusLabel: Record<string, string> = {
 
 /** Message lisible à partir des formes d'erreur de l'API (texte, validation Pydantic, stock insuffisant). */
 export function errorMessage(e: unknown): string {
+  if (e instanceof UploadError) return e.message;
   if (e instanceof ApiError) {
     const d = e.detail as unknown;
     if (typeof d === "string") return d;

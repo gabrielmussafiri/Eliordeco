@@ -7,6 +7,7 @@ import { ErrorNote, Loading, PageHeader, Panel, inputCls, selectCls } from "@/co
 import { Button } from "@/components/ui/Button";
 import { Photo } from "@/components/ui/Photo";
 import { del, post, put, useAction, useAdminFetch } from "@/lib/admin";
+import { prepareUpload } from "@/lib/image";
 import { api, type Category, type PricingUnit, type Product } from "@/lib/api";
 
 interface Form {
@@ -59,7 +60,7 @@ function Editor({ product, cats, reload }: { product?: Product; cats: Category[]
 
   const upload = (files: FileList | null) => up.run(async () => {
     for (const fl of Array.from(files ?? [])) {
-      const fd = new FormData(); fd.set("file", fl);
+      const fd = new FormData(); fd.set("file", await prepareUpload(fl));
       await api(`/api/admin/products/${product!.id}/images`, { method: "POST", body: fd });
     }
     if (file.current) file.current.value = "";
@@ -121,7 +122,7 @@ function Editor({ product, cats, reload }: { product?: Product; cats: Category[]
                 <label htmlFor="up" className="eyebrow mt-5 block">Add photos</label>
                 <input id="up" ref={file} type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={up.busy}
                   onChange={(e) => upload(e.target.files)} className="mt-2 block w-full text-sm file:mr-3 file:border file:border-espresso file:bg-transparent file:px-3 file:py-1.5 file:text-xs file:font-semibold file:uppercase" />
-                <p className="mt-2 text-xs text-ink-soft">JPEG, PNG or WebP, up to 8 MB each. The first photo is the cover.</p>
+                <p className="mt-2 text-xs text-ink-soft">JPEG, PNG or WebP. Large photos are reduced automatically. The first photo is the cover.</p>
                 {up.error && <p role="alert" className="mt-2 text-sm text-danger">{up.error}</p>}
               </>
             )}

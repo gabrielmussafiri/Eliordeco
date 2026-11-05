@@ -5,7 +5,7 @@ import time
 from collections import defaultdict
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -23,9 +23,18 @@ from ..enums import FulfillmentMethod
 from ..availability import ensure_utc
 from ..services import BusinessRuleError, create_booking, hash_token, money, price_items, submit_payment
 from ..settings_store import get_settings
-from ..storage import private_path, save_upload
+from ..storage import load, read_validated, store
 
 router = APIRouter(prefix="/api")
+media_router = APIRouter()
+
+
+@media_router.get("/media/{key}")
+def media(key: str, db: Session = Depends(get_db)):
+    """Photos produit publiques. Le nom de fichier est aléatoire et unique : cache d'un an sans risque."""
+    f = load(db, key, private=False)
+    return Response(f.data, media_type=f.content_type,
+                    headers={"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"})
 limit_write = RateLimiter(20, 60, "write")
 limit_lookup = RateLimiter(30, 60, "lookup")
 
@@ -193,15 +202,15 @@ async def portal_submit_payment(
         raise HTTPException(422, "Unsupported payment method")
     if paid_on.tzinfo is None:
         paid_on = paid_on.replace(tzinfo=timezone.utc)
-    stored = await save_upload(receipt, private=True, allow_pdf=True) if receipt else None
+    stored = await read_validated(receipt, allow_pdf=True) if receipt else None
     try:
         rec = submit_payment(db, b, amount=amount, method=method, paid_on=paid_on,
                              transaction_reference=transaction_reference)
     except BusinessRuleError as e:
         raise HTTPException(422, str(e))
     if stored:
-        db.add(PaymentEvidence(payment_id=rec.id, storage_key=stored[0], content_type=stored[1],
-                               size_bytes=stored[2]))
+        key = store(db, stored[0], stored[1], stored[2], private=True)
+        db.add(PaymentEvidence(payment_id=rec.id, storage_key=key, content_type=stored[1], size_bytes=len(stored[0])))
     db.commit()
     notify.queue(background, [notify.payment_ack(b, rec, s), notify.owner_payment_submitted(b, rec, s)])
     return {"payment_id": rec.id, "payment_status": b.payment_status.value}
@@ -215,8 +224,9 @@ def portal_evidence(reference: str, evidence_id: int, x_access_token: str | None
                    .where(PaymentEvidence.id == evidence_id, PaymentRecord.booking_id == b.id))
     if not ev:
         raise HTTPException(404, "Not found")
-    return FileResponse(private_path(ev.storage_key), media_type=ev.content_type,
-                        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
+    f = load(db, ev.storage_key, private=True)
+    return Response(f.data, media_type=f.content_type,
+                    headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
 
 
 # ---------- « Renvoyez-moi mes liens » ----------

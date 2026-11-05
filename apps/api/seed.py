@@ -2,7 +2,6 @@
 Les images sont des visuels de substitution générés (SVG) — à remplacer par de vraies photos via l'admin.
 Usage: python seed.py            (uniquement le produit réel)
        python seed.py --demo     (ajoute des produits de démonstration inventés)"""
-import shutil
 from decimal import Decimal
 from pathlib import Path
 
@@ -10,7 +9,7 @@ from app.db import Base, SessionLocal, engine
 from app.enums import PricingUnit
 from app.models import Category, Product, ProductImage
 from app.settings_store import set_setting
-from app.storage import PUBLIC
+from app.models import StoredFile
 
 PALETTES = {
     "sand": ("#EEEAE1", "#DDD6C8", "#A69A89", "#29251F"),
@@ -144,21 +143,28 @@ def run(demo: bool = False):
             db.add(p)
             if kind.startswith("photo:"):
                 fname = kind.split(":", 1)[1]
-                shutil.copyfile(Path(__file__).parent / "seed_assets" / fname, PUBLIC / fname)
+                db.merge(StoredFile(key=fname, content_type="image/jpeg", is_private=False,
+                                    data=(Path(__file__).parent / "seed_assets" / fname).read_bytes(),
+                                    size_bytes=(Path(__file__).parent / "seed_assets" / fname).stat().st_size))
                 p.images.append(ProductImage(url=f"/media/{fname}", sort_order=0,
                                              alt="Fringed white umbrellas over a long table set for a garden party"))
                 continue
             for n, pal in enumerate(pals):
                 key = f"seed-{slug}-{n}.svg"
-                (PUBLIC / key).write_text(MAKERS[kind](pal))
+                svg = MAKERS[kind](pal).encode()
+                db.merge(StoredFile(key=key, content_type="image/svg+xml", is_private=False, data=svg, size_bytes=len(svg)))
                 p.images.append(ProductImage(url=f"/media/{key}", alt=name, sort_order=n))
-        for k, v in {"whatsapp_number": "15555550123", "contact_email": "hello@example.com",
-                     "business_address": "Houston, TX & surrounding areas", "delivery_enabled": True, "delivery_fee": "0.00",
-                     "payment_methods": ["Zelle", "Cash App", "Bank transfer", "Cash"],
-                     "payment_instructions": "Send your deposit to the account provided, then submit the payment details here."}.items():
+        # Réglages de départ : aucune valeur factice publiée (numéro WhatsApp, email, coordonnées bancaires) —
+        # le propriétaire les renseigne dans Admin → Settings. Avec --demo, des valeurs d'exemple sont ajoutées.
+        base = {"business_address": "Houston, TX & surrounding areas", "delivery_enabled": True, "delivery_fee": "0.00",
+                "payment_methods": ["Zelle", "Cash App", "Bank transfer", "Cash"]}
+        if demo:
+            base |= {"whatsapp_number": "15555550123", "contact_email": "hello@example.com",
+                     "payment_instructions": "Send your deposit to the account provided, then submit the payment details here."}
+        for k, v in base.items():
             set_setting(db, k, v)
         db.commit()
-        print("Seeded", len(selected), "products (demo WhatsApp number set — change it in Settings).")
+        print("Seeded", len(selected), "products. Set WhatsApp, contact email and payment details in Admin → Settings.")
 
 
 if __name__ == "__main__":

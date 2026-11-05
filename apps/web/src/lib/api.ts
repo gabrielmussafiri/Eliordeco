@@ -22,7 +22,7 @@ export class ApiError extends Error {
 }
 
 // Côté serveur : appel direct à FastAPI. Côté navigateur : même origine (rewrite Next).
-const base = () => (typeof window === "undefined" ? (process.env.API_URL ?? "http://localhost:8000") : "");
+const base = () => (typeof window === "undefined" ? (process.env.API_URL ?? "http://localhost:8000").replace(/\/+$/, "") : "");
 
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, headers, ...rest } = init;

@@ -18,11 +18,11 @@ Requirements: Node 20+, Python 3.12+, PostgreSQL 16.
 # API
 createdb eliors_deco && createdb eliors_deco_test
 cd apps/api
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python seed.py                  # real product only  (add --demo for invented sample products)
 .venv/bin/python create_admin.py you@example.com "Your Name"   # prompts for a password (12+ chars)
 .venv/bin/uvicorn app.main:app --port 8000
-.venv/bin/pytest                          # 25 tests, uses the eliors_deco_test database
+.venv/bin/pytest                          # 27 tests, uses the eliors_deco_test database
 
 # Web (second terminal)
 cd apps/web && npm install && npm run build && npx next start -p 3000
@@ -39,11 +39,21 @@ Copy `apps/api/.env.example` to `apps/api/.env`. In production set `ENVIRONMENT=
 Brand copy, service area and event types live in `apps/web/src/lib/content.ts`. Business settings (WhatsApp number,
 bank details, policies, buffers, timezone) are edited by the owner in **Admin → Settings**.
 
+## Deploy on Vercel
+
+One Vercel project, two services (see `vercel.json`): the Next.js site (`apps/web`) and the FastAPI API (`apps/api`),
+routed by path (`/api`, `/media` → API, everything else → site). Required environment variables on the project:
+`DATABASE_URL` (Neon Postgres via the Vercel Marketplace), `SECRET_KEY` (long random string), `ENVIRONMENT=production`;
+optional `RESEND_API_KEY` and `EMAIL_FROM`. The public URL for email links is taken from Vercel automatically
+(or set `PUBLIC_URL` for a custom domain). Create the tables and the first data once from your machine:
+pull the variables, then run `python seed.py` and `python create_admin.py` against that `DATABASE_URL`.
+File uploads are limited to 4 MB (Vercel request limit); large photos are reduced in the browser before sending.
+
 ## Before going live
 
 - Replace placeholder values of the "Fringed Umbrella" (price, deposit, stock) in Admin → Inventory.
 - Set the real WhatsApp number and contact email in Admin → Settings.
 - Configure Resend with a verified domain, `EMAIL_FROM` and `PUBLIC_URL`.
-- Product photos and payment receipts use local disk storage; switch `app/storage.py` to S3/Cloudinary for production.
+- Product photos and receipts are stored in PostgreSQL (`app/storage.py`) because serverless hosting has no persistent disk. Fine at this scale; move to object storage if volume grows.
 - The rate limiter is in-memory (single instance); use a shared store if the API is replicated.
 - Database tables are created with `create_all`; add Alembic migrations before the first schema change in production.

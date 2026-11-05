@@ -9,6 +9,7 @@ import {
   SAVED_KEY, bookingStatusLabel, errorMessage, paymentStatusLabel, readSaved, saveAccess, subscribeSaved,
   type BookingView, type PaymentOut,
 } from "@/lib/booking";
+import { prepareUpload } from "@/lib/image";
 import { todayIn, zonedToUtcISO } from "@/lib/time";
 
 type Loaded = { key: string; booking?: BookingView; settings?: PublicSettings; status?: "notfound" | "error" };
@@ -200,14 +201,13 @@ function PaymentSection({ b, s, token, onDone }:
     setError("");
     const n = Number(amount);
     if (!(n > 0)) return setError("Enter the amount you paid.");
-    if (file && file.size > 8 * 1024 * 1024) return setError("The receipt must be under 8 MB.");
     const fd = new FormData();
     fd.set("amount", amount); fd.set("method", method);
     fd.set("paid_on", zonedToUtcISO(date, "12:00", s.timezone));
     if (ref.trim()) fd.set("transaction_reference", ref.trim());
-    if (file) fd.set("receipt", file);
     setBusy(true);
     try {
+      if (file) fd.set("receipt", await prepareUpload(file));
       await api(`/api/portal/${encodeURIComponent(b.reference)}/payments`, {
         method: "POST", body: fd, headers: { "X-Access-Token": token },
       });
@@ -246,7 +246,7 @@ function PaymentSection({ b, s, token, onDone }:
           <label htmlFor="p-file" className="eyebrow block">Receipt or screenshot (optional)</label>
           <input id="p-file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="mt-3 block w-full text-sm file:mr-4 file:border file:border-espresso file:bg-transparent file:px-4 file:py-2 file:text-xs file:font-semibold file:uppercase file:tracking-wider" />
-          <p className="mt-2 text-xs text-ink-soft">JPEG, PNG, WebP or PDF, up to 8 MB.</p>
+          <p className="mt-2 text-xs text-ink-soft">JPEG, PNG, WebP or PDF. Large photos are reduced automatically; PDFs must be under 4 MB.</p>
         </div>
         {error && <p role="alert" className="text-sm text-danger sm:col-span-2">{error}</p>}
         <div className="sm:col-span-2"><Button type="submit" arrow disabled={busy}>{busy ? "Sending…" : "Send payment details"}</Button></div>

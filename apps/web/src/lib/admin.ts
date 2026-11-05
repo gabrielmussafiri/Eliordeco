@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { ApiError, api, type PublicSettings } from "./api";
+import { UploadError } from "./image";
 
 export interface Me { email: string; full_name: string; role: "owner" | "staff" }
 export interface AdminSettings extends PublicSettings {
@@ -49,6 +50,7 @@ export function useAction() {
     setBusy(true); setError("");
     try { return await fn(); }
     catch (e) {
+      if (e instanceof UploadError) { setError(e.message); return; }
       const d = (e as ApiError).detail as unknown;
       setError(typeof d === "string" ? d : Array.isArray(d) ? d.map((x: { msg?: string }) => x.msg).join(" · ")
         : d && typeof d === "object" && (d as { code?: string }).code === "insufficient_inventory"
