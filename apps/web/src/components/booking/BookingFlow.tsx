@@ -7,6 +7,8 @@ import { Field, TextArea } from "@/components/ui/Field";
 import { Photo } from "@/components/ui/Photo";
 import { ApiError, api, formatDateTime, formatMoney, unitLabel, type Product, type PublicSettings } from "@/lib/api";
 import { errorMessage, saveAccess, type BookingView, type Quote } from "@/lib/booking";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { useFullDays } from "@/lib/useFullDays";
 import { TIME_SLOTS, isoToZoned, todayIn, zonedToUtcISO } from "@/lib/time";
 
 type Shortage = { product_id: number; requested: number; available: number };
@@ -50,6 +52,7 @@ export function BookingFlow({ products, settings, initial }: Props) {
   const heading = useRef<HTMLHeadingElement>(null);
 
   const items = Object.entries(qty).filter(([, n]) => n > 0).map(([id, n]) => ({ product_id: Number(id), quantity: n }));
+  const { full, request } = useFullDays(items);
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
   const period = useMemo(() => {
@@ -203,21 +206,15 @@ export function BookingFlow({ products, settings, initial }: Props) {
         {step === 2 && (
           <div>
             <div className="mt-8 grid max-w-xl grid-cols-[1fr_8rem] gap-x-6 gap-y-7">
-              <div>
-                <label htmlFor="b-sd" className="eyebrow block">Pick-up date</label>
-                <input id="b-sd" type="date" min={today} value={sd} className={select}
-                  onChange={(e) => { setSd(e.target.value); if (!ed || ed < e.target.value) setEd(e.target.value); }} />
-              </div>
+              <DatePicker id="b-sd" label="Pick-up date" value={sd} min={today} full={full} onViewMonth={request}
+                onChange={(d) => { setSd(d); if (!ed || ed < d) setEd(d); }} />
               <div>
                 <label htmlFor="b-st" className="eyebrow block">Time</label>
                 <select id="b-st" value={st} onChange={(e) => setSt(e.target.value)} className={select}>
                   {TIME_SLOTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
               </div>
-              <div>
-                <label htmlFor="b-ed" className="eyebrow block">Return date</label>
-                <input id="b-ed" type="date" min={sd || today} value={ed} onChange={(e) => setEd(e.target.value)} className={select} />
-              </div>
+              <DatePicker id="b-ed" label="Return date" value={ed} min={sd || today} full={full} onViewMonth={request} onChange={setEd} />
               <div>
                 <label htmlFor="b-et" className="eyebrow block">Time</label>
                 <select id="b-et" value={et} onChange={(e) => setEt(e.target.value)} className={select}>
@@ -314,7 +311,7 @@ export function BookingFlow({ products, settings, initial }: Props) {
             </dl>
             <p className="mt-6 border-l-2 border-olive pl-4 text-sm text-ink-soft">
               <strong className="text-espresso">No payment is taken now.</strong> After you submit, we review your request and
-              you&rsquo;ll find payment instructions on your booking page.
+              you&rsquo;ll find payment instructions on your booking page. A request not reviewed within {settings.pending_expiry_hours ?? 48} hours expires automatically.
             </p>
             {(settings.rental_policies || settings.cancellation_policy) && (
               <div className="mt-6 space-y-3 text-sm text-ink-soft">

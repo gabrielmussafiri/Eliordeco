@@ -12,7 +12,7 @@ export interface PublicSettings {
   business_name: string; contact_email: string; whatsapp_number: string; business_address: string;
   timezone: string; currency: string; operating_hours: Record<string, string>;
   rental_policies: string; cancellation_policy: string; delivery_enabled: boolean;
-  delivery_fee: string; deposit_percentage: number;
+  delivery_fee: string; deposit_percentage: number; pending_expiry_hours: number;
 }
 
 export class ApiError extends Error {

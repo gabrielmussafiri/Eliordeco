@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..availability import (
-    AvailabilityError, blocked_range, check_availability, lock_products, peak_usage, _used_intervals,
+    AvailabilityError, blocked_range, check_availability, lock_products, peak_usage, pending_cutoff, _used_intervals,
 )
 from .. import notifications as notify
 from ..config import settings as cfg
@@ -31,7 +31,7 @@ from ..security import (
 )
 from ..serializers import booking_out, payment_out
 from ..services import (
-    BusinessRuleError, audit, change_status, create_booking, money, outstanding_balance, price_items,
+    BusinessRuleError, audit, change_status, create_booking, expire_stale_pending, money, outstanding_balance, price_items,
     record_admin_payment, recompute_payment_status, review_payment, verified_total,
 )
 from ..settings_store import DEFAULTS, get_settings, set_setting
@@ -41,6 +41,18 @@ router = APIRouter(prefix="/api/admin")
 limit_login = RateLimiter(8, 300, "login")
 LOCKOUT_FAILURES, LOCKOUT_MINUTES = 8, 15
 secured = [Depends(current_admin)]
+
+
+def sweep(background: BackgroundTasks, db: Session = Depends(get_db)) -> None:
+    """Dépendance : libère d'abord les demandes expirées (et prévient les clients) avant de lire ou décider."""
+    s = get_settings(db)
+    expired = expire_stale_pending(db, s)
+    if expired:
+        db.commit()
+        notify.queue(background, [notify.booking_expired(b, s) for b in expired])
+
+
+swept = Depends(sweep)
 
 
 def slugify(text: str) -> str:
@@ -269,7 +281,7 @@ def _booking(db: Session, ref: str) -> Booking:
     return b or _404()
 
 
-@router.get("/bookings", dependencies=secured)
+@router.get("/bookings", dependencies=[*secured, swept])
 def list_bookings(q: str | None = None, status: BookingStatus | None = None,
                   payment_status: PaymentStatus | None = None, date_from: datetime | None = None,
                   date_to: datetime | None = None, limit: int = 100, offset: int = 0,
@@ -294,7 +306,7 @@ def list_bookings(q: str | None = None, status: BookingStatus | None = None,
              "created_at": b.created_at} for b in rows]
 
 
-@router.get("/bookings/{ref}", dependencies=secured)
+@router.get("/bookings/{ref}", dependencies=[*secured, swept])
 def booking_detail(ref: str, db: Session = Depends(get_db)):
     return booking_out(_booking(db, ref), get_settings(db), admin=True)
 
@@ -327,7 +339,7 @@ def admin_create_booking(body: AdminBookingIn, background: BackgroundTasks, user
     return booking_out(b, s, admin=True)
 
 
-@router.post("/bookings/{ref}/status")
+@router.post("/bookings/{ref}/status", dependencies=[swept])
 def set_status(ref: str, body: StatusIn, background: BackgroundTasks, user: User = Depends(current_admin), db: Session = Depends(get_db)):
     b = _booking(db, ref)
     try:
@@ -521,6 +533,8 @@ def write_settings(body: dict, user: User = Depends(require_owner), db: Session 
                 isinstance(m, str) and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", m.strip()) for m in mails):
             raise HTTPException(422, "Alert emails: up to 5 valid email addresses.")
         body["notification_emails"] = list(dict.fromkeys(m.strip().lower() for m in mails))
+    if "pending_expiry_hours" in body and not 1 <= float(body["pending_expiry_hours"]) <= 720:
+        raise HTTPException(422, "Expiry must be between 1 and 720 hours.")
     if "deposit_percentage" in body and not 0 <= float(body["deposit_percentage"]) <= 100:
         raise HTTPException(422, "Deposit percentage must be between 0 and 100")
     for k, v in body.items():
@@ -532,7 +546,7 @@ def write_settings(body: dict, user: User = Depends(require_owner), db: Session 
 
 # ---------- Calendrier & tableau de bord ----------
 
-@router.get("/calendar", dependencies=secured)
+@router.get("/calendar", dependencies=[*secured, swept])
 def calendar(start: datetime, end: datetime, db: Session = Depends(get_db)):
     bookings = db.scalars(select(Booking).options(selectinload(Booking.customer), selectinload(Booking.items))
                           .where(Booking.status.in_(BLOCKING_STATUSES), Booking.start_at < end,
@@ -549,7 +563,7 @@ def calendar(start: datetime, end: datetime, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/calendar/inventory", dependencies=secured)
+@router.get("/calendar/inventory", dependencies=[*secured, swept])
 def calendar_inventory(day_from: date, days: int = 31, db: Session = Depends(get_db)):
     """Stock restant par produit et par jour (fuseau de l'entreprise)."""
     s = get_settings(db)
@@ -562,13 +576,13 @@ def calendar_inventory(day_from: date, days: int = 31, db: Session = Depends(get
             d = day_from + timedelta(days=n)
             ws = datetime.combine(d, time.min, tz).astimezone(timezone.utc)
             we = datetime.combine(d + timedelta(days=1), time.min, tz).astimezone(timezone.utc)
-            used = peak_usage(_used_intervals(db, p.id, (ws, we), None, None), (ws, we))
+            used = peak_usage(_used_intervals(db, p.id, (ws, we), None, None, pending_cutoff(s)), (ws, we))
             row.append({"date": d.isoformat(), "remaining": max(p.total_quantity - used, 0)})
         out.append({"product_id": p.id, "name": p.name, "total": p.total_quantity, "days": row})
     return out
 
 
-@router.get("/dashboard", dependencies=secured)
+@router.get("/dashboard", dependencies=[*secured, swept])
 def dashboard(db: Session = Depends(get_db)):
     s = get_settings(db)
     tz = ZoneInfo(s["timezone"])

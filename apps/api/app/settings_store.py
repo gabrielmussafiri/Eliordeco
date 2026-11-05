@@ -15,6 +15,7 @@ DEFAULTS: dict = {
     "deposit_percentage": 30,
     "delivery_fee": "0.00",
     "delivery_enabled": True,
+    "pending_expiry_hours": 48,   # une demande non traitée expire (et libère le stock) après ce délai
     "payment_instructions": "",
     "payment_methods": ["Zelle", "Cash App", "Bank transfer", "Cash"],
     "bank_details": {"bank_name": "", "account_holder": "", "account_number": "", "routing": ""},

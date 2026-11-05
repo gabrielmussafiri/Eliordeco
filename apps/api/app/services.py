@@ -166,6 +166,25 @@ def change_status(db: Session, booking: Booking, new: BookingStatus, user_id: in
           {"status": before.value}, {"status": new.value})
 
 
+def expire_stale_pending(db: Session, settings: dict) -> list[Booking]:
+    """Passe en « Expired » les demandes non traitées après le délai (48 h par défaut) pour libérer le stock.
+    On n'expire jamais une demande pour laquelle le client a déjà soumis ou fait vérifier un paiement : c'est à
+    l'administrateur de trancher. À appeler avant les lectures et décisions sensibles (pas de planificateur
+    nécessaire en serverless)."""
+    from .availability import pending_cutoff
+
+    cutoff = pending_cutoff(settings)
+    stale = db.scalars(select(Booking).where(Booking.status == BookingStatus.PENDING_REVIEW,
+                                             Booking.created_at <= cutoff).with_for_update(skip_locked=True)).all()
+    expired = []
+    for b in stale:
+        if any(p.status in (PaymentRecordStatus.SUBMITTED, PaymentRecordStatus.VERIFIED) for p in b.payments):
+            continue
+        change_status(db, b, BookingStatus.EXPIRED, None, "Not reviewed in time")
+        expired.append(b)
+    return expired
+
+
 def verified_total(booking: Booking) -> Decimal:
     return money(sum((p.amount for p in booking.payments if p.status == PaymentRecordStatus.VERIFIED),
                      Decimal("0")))

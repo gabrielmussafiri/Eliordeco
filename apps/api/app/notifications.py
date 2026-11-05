@@ -153,6 +153,15 @@ def booking_cancelled(b: Booking, s: dict) -> Message:
                 [("Reference", b.reference)], None, FOOT)
 
 
+def booking_expired(b: Booking, s: dict) -> Message:
+    hours = int(s.get("pending_expiry_hours", 48))
+    return _msg(b.customer.email, f"Your request {b.reference} has expired", "booking_expired", b, s,
+                "Your request expired.",
+                [f"We weren't able to review this request within {hours} hours, so it has been released and nothing was charged. "
+                 "If you still need the items, you're welcome to send a new request or message us."],
+                [("Reference", b.reference)], ("Make a new request", f"{cfg.public_url.rstrip('/')}/book"), FOOT)
+
+
 def payment_ack(b: Booking, p: PaymentRecord, s: dict) -> Message:
     return _msg(b.customer.email, f"Payment details received for {b.reference}", "payment_ack", b, s,
                 "We received your payment details.",

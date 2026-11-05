@@ -6,7 +6,7 @@ import { UploadError } from "./image";
 
 export interface Me { email: string; full_name: string; role: "owner" | "staff" }
 export interface AdminSettings extends PublicSettings {
-  notification_emails: string[]; payment_instructions: string; payment_methods: string[];
+  notification_emails: string[]; pending_expiry_hours: number; payment_instructions: string; payment_methods: string[];
   bank_details: Record<string, string>; buffer_before_minutes: number; buffer_after_minutes: number;
 }
 export const AdminCtx = createContext<{ me: Me; settings: AdminSettings; reloadSettings: () => void } | null>(null);

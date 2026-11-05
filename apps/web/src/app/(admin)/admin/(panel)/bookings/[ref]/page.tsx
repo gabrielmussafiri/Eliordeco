@@ -103,6 +103,11 @@ const Row = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) =>
   <div className={`flex justify-between ${bold ? "border-t border-line pt-2 font-semibold" : ""}`}><dt className={bold ? "" : "text-ink-soft"}>{k}</dt><dd>{v}</dd></div>;
 
 function Transitions({ b, onDone }: { b: AdminBooking; onDone: () => void }) {
+  const { settings } = useAdmin();
+  const hasPayment = b.payments.some((p) => p.status === "submitted" || p.status === "verified");
+  const expiry = b.status === "pending_review" && !hasPayment
+    ? ` If nobody decides, it expires automatically on ${formatDateTime(new Date(new Date(b.created_at).getTime() + (settings.pending_expiry_hours ?? 48) * 3_600_000).toISOString(), settings.timezone)}.`
+    : b.status === "pending_review" ? " It has a payment attached, so it will not expire on its own." : "";
   const { busy, error, run } = useAction();
   const [mode, setMode] = useState<"reject" | "cancel" | null>(null);
   const [reason, setReason] = useState("");
@@ -118,7 +123,7 @@ function Transitions({ b, onDone }: { b: AdminBooking; onDone: () => void }) {
         {b.status === "pending_review" && <Button variant="outline" className="min-h-10" onClick={() => setMode("reject")}>Reject</Button>}
         {canCancel && <Button variant="quiet" onClick={() => setMode("cancel")}>Cancel booking</Button>}
       </div>
-      {b.status === "pending_review" && <p className="mt-3 text-xs text-ink-soft">Approving confirms the booking. It does not mark anything as paid.</p>}
+      {b.status === "pending_review" && <p className="mt-3 text-xs text-ink-soft">Approving confirms the booking. It does not mark anything as paid.{expiry}</p>}
       {mode && (
         <div className="mt-4">
           <label htmlFor="why" className="eyebrow block">{mode === "reject" ? "Reason (shown to you only)" : "Why is it being cancelled?"}</label>

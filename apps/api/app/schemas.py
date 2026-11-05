@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -30,6 +30,13 @@ class PeriodIn(BaseModel):
 
 class QuoteIn(PeriodIn):
     fulfillment: FulfillmentMethod = FulfillmentMethod.PICKUP
+
+
+class DaysIn(BaseModel):
+    items: list[ItemIn] = Field(min_length=1, max_length=30)
+    first_day: date = Field(alias="from")
+    days: int = Field(default=42, ge=1, le=70)
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class HoldIn(PeriodIn):

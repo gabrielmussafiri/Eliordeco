@@ -70,11 +70,11 @@ function View({ b, s, token, isNew, onChanged }:
   const tz = s.timezone;
   const closed = ["rejected", "cancelled", "expired"].includes(b.status);
   const next = {
-    pending_review: "We review every request personally. Once it's confirmed you can send your payment details below.",
+    pending_review: `We review every request personally. Once it's confirmed you can send your payment details below. Requests that aren't reviewed within ${s.pending_expiry_hours ?? 48} hours expire automatically and release the items.`,
     confirmed: "Your booking is confirmed. Send your payment details below if you haven't yet.",
     active: "Your rental is under way.", completed: "Thank you for renting with us.",
     rejected: "We couldn't accept this request. Message us and we'll help find an alternative.",
-    cancelled: "This booking was cancelled.", expired: "This request expired.",
+    cancelled: "This booking was cancelled.", expired: "This request wasn't reviewed in time and expired, so the items were released. You can send a new request any time.",
   }[b.status] ?? "";
 
   return (

@@ -35,3 +35,17 @@ export function isoToZoned(iso: string, timeZone: string): { date: string; time:
   const time = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
   return { date, time };
 }
+
+// ───────── Calendrier : arithmétique sur des dates « AAAA-MM-JJ » (sans fuseau, donc sans décalage) ─────────
+const parts = (d: string) => d.split("-").map(Number) as [number, number, number];
+export const addDays = (d: string, n: number) => {
+  const [y, m, dd] = parts(d);
+  return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
+};
+export const weekday = (d: string) => { const [y, m, dd] = parts(d); return new Date(Date.UTC(y, m - 1, dd)).getUTCDay(); };
+export const firstOfMonth = (d: string) => d.slice(0, 8) + "01";
+export const addMonths = (d: string, n: number) => { const [y, m] = parts(d); return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 10); };
+export const formatDay = (d: string, o: Intl.DateTimeFormatOptions) => {
+  const [y, m, dd] = parts(d);
+  return new Intl.DateTimeFormat("en-US", { ...o, timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, dd)));
+};

@@ -12,16 +12,16 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import notifications as notify
 from .. import whatsapp
-from ..availability import AvailabilityError, check_availability, create_hold
+from ..availability import AvailabilityError, check_availability, create_hold, full_days
 from ..config import settings as cfg
 from ..db import get_db
 from ..models import Booking, Category, Customer, PaymentEvidence, PaymentRecord, Product
-from ..schemas import ResendIn, BookingIn, CategoryOut, HoldIn, PeriodIn, ProductOut, QuoteIn
+from ..schemas import DaysIn, ResendIn, BookingIn, CategoryOut, HoldIn, PeriodIn, ProductOut, QuoteIn
 from ..security import RateLimiter
 from ..serializers import booking_out
 from ..enums import FulfillmentMethod
 from ..availability import ensure_utc
-from ..services import BusinessRuleError, create_booking, hash_token, money, price_items, submit_payment
+from ..services import BusinessRuleError, create_booking, expire_stale_pending, hash_token, money, price_items, submit_payment
 from ..settings_store import get_settings
 from ..storage import load, read_validated, store
 
@@ -50,7 +50,7 @@ def public_settings(db: Session = Depends(get_db)):
     s = get_settings(db)
     keys = ["business_name", "contact_email", "whatsapp_number", "business_address", "timezone", "currency",
             "operating_hours", "rental_policies", "cancellation_policy", "delivery_enabled", "delivery_fee",
-            "deposit_percentage"]
+            "deposit_percentage", "pending_expiry_hours"]
     return {k: s[k] for k in keys}  # jamais les coordonnées bancaires ici
 
 
@@ -130,6 +130,16 @@ def quote(body: QuoteIn, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/availability/days", dependencies=[Depends(limit_lookup)])
+def availability_days(body: DaysIn, db: Session = Depends(get_db)):
+    """Jours complets (aucun créneau avec assez de stock) pour griser le sélecteur de dates."""
+    s = get_settings(db)
+    merged: dict[int, int] = {}
+    for i in body.items:
+        merged[i.product_id] = merged.get(i.product_id, 0) + i.quantity
+    return {"full": full_days(db, sorted(merged.items()), body.first_day, body.days, s)}
+
+
 @router.post("/holds", dependencies=[Depends(limit_write)])
 def hold(body: HoldIn, db: Session = Depends(get_db)):
     s = get_settings(db)
@@ -150,6 +160,9 @@ def hold(body: HoldIn, db: Session = Depends(get_db)):
 @router.post("/bookings", status_code=201, dependencies=[Depends(limit_write)])
 def submit_booking(body: BookingIn, background: BackgroundTasks, db: Session = Depends(get_db)):
     s = get_settings(db)
+    expired = expire_stale_pending(db, s)
+    db.commit()
+    notify.queue(background, [notify.booking_expired(x, s) for x in expired])
     try:
         b, token = create_booking(
             db, items=[(i.product_id, i.quantity) for i in body.items], start=body.start_at, end=body.end_at,

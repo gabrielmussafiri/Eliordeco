@@ -16,11 +16,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
-from .enums import BLOCKING_STATUSES
-from .models import Booking, BookingItem, InventoryHold, MaintenancePeriod, Product
+from .enums import BookingStatus, PaymentRecordStatus
+from .models import Booking, BookingItem, InventoryHold, MaintenancePeriod, PaymentRecord, Product
 
 
 class AvailabilityError(Exception):
@@ -81,6 +81,25 @@ def peak_usage(intervals: list[tuple[datetime, datetime, int]], window: tuple[da
     return peak
 
 
+def min_usage(intervals: list[tuple[datetime, datetime, int]], window: tuple[datetime, datetime]) -> int:
+    """Quantité minimale utilisée à un instant de la fenêtre. Si elle dépasse (stock - demandé), plus aucun
+    instant de la fenêtre n'offre assez d'unités libres : la journée est « complète »."""
+    ws, we = window
+    pts = sorted({ws, we, *[min(max(t, ws), we) for s, e, _ in intervals for t in (s, e)]})
+    best = None
+    for a, b in zip(pts, pts[1:]):
+        if a >= b:
+            continue
+        use = sum(q for s, e, q in intervals if s <= a and e >= b)
+        best = use if best is None else min(best, use)
+    return best or 0
+
+
+def pending_cutoff(settings: dict) -> datetime:
+    """Une demande « en attente » plus ancienne que ce seuil ne bloque plus le stock (elle va expirer)."""
+    return utcnow() - timedelta(hours=float(settings.get("pending_expiry_hours", 48)))
+
+
 def purge_expired_holds(db: Session) -> int:
     res = db.execute(delete(InventoryHold).where(InventoryHold.expires_at <= utcnow()))
     return res.rowcount or 0
@@ -95,7 +114,7 @@ def lock_products(db: Session, product_ids: list[int]) -> dict[int, Product]:
 
 def _used_intervals(
     db: Session, product_id: int, window: tuple[datetime, datetime],
-    exclude_hold_token: str | None, exclude_booking_id: int | None,
+    exclude_hold_token: str | None, exclude_booking_id: int | None, cutoff: datetime | None = None,
 ) -> list[tuple[datetime, datetime, int]]:
     ws, we = window
     out: list[tuple[datetime, datetime, int]] = []
@@ -105,7 +124,12 @@ def _used_intervals(
         .join(BookingItem, BookingItem.booking_id == Booking.id)
         .where(
             BookingItem.product_id == product_id,
-            Booking.status.in_(BLOCKING_STATUSES),
+            or_(Booking.status.in_((BookingStatus.CONFIRMED, BookingStatus.ACTIVE)),
+                # En attente : bloque tant qu'elle n'est pas périmée, ou dès qu'un paiement a été soumis/vérifié
+                # (dans ce cas elle n'expire jamais seule : à l'administrateur de trancher).
+                and_(Booking.status == BookingStatus.PENDING_REVIEW,
+                     or_(Booking.created_at > (cutoff if cutoff is not None else datetime.min.replace(tzinfo=timezone.utc)),
+                         Booking.payments.any(PaymentRecord.status.in_((PaymentRecordStatus.SUBMITTED, PaymentRecordStatus.VERIFIED)))))),
             Booking.blocked_start < we,
             Booking.blocked_end > ws,
         )
@@ -160,7 +184,8 @@ def check_availability(
         if p is None or not p.is_active:
             results.append(ItemAvailability(pid, qty, 0, 0))
             continue
-        used = peak_usage(_used_intervals(db, pid, window, exclude_hold_token, exclude_booking_id), window)
+        used = peak_usage(_used_intervals(db, pid, window, exclude_hold_token, exclude_booking_id,
+                                          pending_cutoff(settings)), window)
         results.append(ItemAvailability(pid, qty, max(p.total_quantity - used, 0), p.total_quantity))
     return results, window
 
@@ -183,3 +208,35 @@ def create_hold(
                              blocked_start=window[0], blocked_end=window[1], expires_at=expires))
     db.flush()
     return results
+
+
+BOOKABLE_FROM_HOUR, BOOKABLE_TO_HOUR = 7, 22  # créneaux proposés au client (heure locale)
+
+
+def full_days(db: Session, items: list[tuple[int, int]], first_day, days: int, settings: dict) -> list[str]:
+    """Jours (AAAA-MM-JJ, heure locale) où au moins un produit demandé n'a, à aucun moment des créneaux
+    réservables, assez d'unités libres pour la quantité souhaitée. Aide d'affichage : la vérification exacte
+    d'une période reste faite par check_availability."""
+    from datetime import date, time
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(settings["timezone"])
+    products = {p.id: p for p in db.scalars(select(Product).where(Product.id.in_([i for i, _ in items])))}
+    cutoff = pending_cutoff(settings)
+    start = datetime.combine(first_day, time(0), tz).astimezone(timezone.utc)
+    end = datetime.combine(first_day + timedelta(days=days), time(0), tz).astimezone(timezone.utc)
+    per_item = []
+    for pid, qty in items:
+        p = products.get(pid)
+        if p is None or not p.is_active or qty > p.total_quantity:
+            return [(first_day + timedelta(days=n)).isoformat() for n in range(days)]
+        per_item.append((p, qty, _used_intervals(db, pid, (start, end), None, None, cutoff)))
+    out = []
+    for n in range(days):
+        d = first_day + timedelta(days=n)
+        win = (datetime.combine(d, time(BOOKABLE_FROM_HOUR), tz).astimezone(timezone.utc),
+               datetime.combine(d, time(BOOKABLE_TO_HOUR), tz).astimezone(timezone.utc))
+        if any(min_usage([iv for iv in ivs if iv[0] < win[1] and iv[1] > win[0]], win) > p.total_quantity - qty
+               for p, qty, ivs in per_item):
+            out.append(d.isoformat())
+    return out

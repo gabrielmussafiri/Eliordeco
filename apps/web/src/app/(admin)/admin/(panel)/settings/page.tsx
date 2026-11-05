@@ -20,7 +20,7 @@ function Form({ s, reload }: { s: AdminSettings; reload: () => void }) {
     business_name: s.business_name, contact_email: s.contact_email, notification_emails: (s.notification_emails ?? []).join(", "), whatsapp_number: s.whatsapp_number, business_address: s.business_address,
     timezone: s.timezone, rental_policies: s.rental_policies, cancellation_policy: s.cancellation_policy,
     payment_instructions: s.payment_instructions, payment_methods: s.payment_methods.join(", "),
-    deposit_percentage: String(s.deposit_percentage), delivery_enabled: s.delivery_enabled, delivery_fee: String(s.delivery_fee),
+    deposit_percentage: String(s.deposit_percentage), pending_expiry_hours: String(s.pending_expiry_hours ?? 48), delivery_enabled: s.delivery_enabled, delivery_fee: String(s.delivery_fee),
     buffer_before_minutes: String(s.buffer_before_minutes), buffer_after_minutes: String(s.buffer_after_minutes),
     bank: { bank_name: "", account_holder: "", account_number: "", routing: "", ...s.bank_details }, hours: { ...s.operating_hours } as Record<string, string>,
   });
@@ -38,7 +38,7 @@ function Form({ s, reload }: { s: AdminSettings; reload: () => void }) {
       notification_emails: v.notification_emails.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean), whatsapp_number: v.whatsapp_number.replace(/[^\d]/g, ""),
       business_address: v.business_address, timezone: v.timezone, rental_policies: v.rental_policies, cancellation_policy: v.cancellation_policy,
       payment_instructions: v.payment_instructions, payment_methods: v.payment_methods.split(",").map((x) => x.trim()).filter(Boolean),
-      deposit_percentage: Number(v.deposit_percentage), delivery_enabled: v.delivery_enabled, delivery_fee: v.delivery_fee || "0",
+      deposit_percentage: Number(v.deposit_percentage), pending_expiry_hours: Number(v.pending_expiry_hours), delivery_enabled: v.delivery_enabled, delivery_fee: v.delivery_fee || "0",
       buffer_before_minutes: Number(v.buffer_before_minutes), buffer_after_minutes: Number(v.buffer_after_minutes),
       bank_details: v.bank, operating_hours: Object.fromEntries(Object.entries(v.hours).filter(([, x]) => x.trim())), currency: "USD",
     });
@@ -73,6 +73,8 @@ function Form({ s, reload }: { s: AdminSettings; reload: () => void }) {
       <Panel title="Delivery & availability" id="d"><div className="grid gap-6 sm:grid-cols-2">
         <label className="flex items-center gap-3 text-sm sm:col-span-2"><input type="checkbox" checked={v.delivery_enabled} onChange={(e) => set("delivery_enabled", e.target.checked)} className="h-4 w-4 accent-olive-deep" /> Offer delivery</label>
         {text("delivery_fee", "Delivery charge (USD)", { inputMode: "decimal" })}<div />
+        {text("pending_expiry_hours", "Unreviewed requests expire after (hours)", { inputMode: "numeric" })}
+        <p className="self-end pb-3 text-xs text-ink-soft">They stop holding stock then. A request with a payment attached never expires on its own.</p>
         {text("buffer_before_minutes", "Default preparation buffer (min)", { inputMode: "numeric" })}
         {text("buffer_after_minutes", "Default return buffer (min)", { inputMode: "numeric" })}
       </div></Panel>

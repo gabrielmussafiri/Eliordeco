@@ -22,7 +22,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python seed.py                  # real product only  (add --demo for invented sample products)
 .venv/bin/python create_admin.py you@example.com "Your Name"   # prompts for a password (12+ chars)
 .venv/bin/uvicorn app.main:app --port 8000
-.venv/bin/pytest                          # 27 tests, uses the eliors_deco_test database
+.venv/bin/pytest                          # 36 tests, uses the eliors_deco_test database
 
 # Web (second terminal)
 cd apps/web && npm install && npm run build && npx next start -p 3000

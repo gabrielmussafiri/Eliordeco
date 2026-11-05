@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { ButtonLink, Button } from "@/components/ui/Button";
 import { api, formatMoney, type Product } from "@/lib/api";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { billableUnits } from "@/lib/pricing";
+import { useFullDays } from "@/lib/useFullDays";
 import { TIME_SLOTS, todayIn, zonedToUtcISO } from "@/lib/time";
 
 type Result = { key: string; ok: boolean; available: number } | { key: string; error: true };
@@ -21,6 +23,8 @@ export function AvailabilityPanel({ product, timeZone, whatsappUrl }:
   const [et, setEt] = useState("18:00");
   const [result, setResult] = useState<Result | null>(null);
   const today = useMemo(() => todayIn(timeZone), [timeZone]);
+  const items = useMemo(() => [{ product_id: product.id, quantity: qty }], [product.id, qty]);
+  const { full, request } = useFullDays(items);
 
   const period = useMemo(() => {
     if (!sd || !ed) return null;
@@ -68,21 +72,15 @@ export function AvailabilityPanel({ product, timeZone, whatsappUrl }:
       <h2 id="avail-h" className="eyebrow">Check availability</h2>
 
       <div className="mt-6 grid grid-cols-[1fr_7.5rem] gap-x-5 gap-y-6">
-        <div>
-          <label htmlFor="sd" className="eyebrow block">Pick-up date</label>
-          <input id="sd" type="date" min={today} value={sd} className={control}
-            onChange={(e) => { setSd(e.target.value); if (!ed || ed < e.target.value) setEd(e.target.value); }} />
-        </div>
+        <DatePicker id="sd" label="Pick-up date" value={sd} min={today} full={full} onViewMonth={request}
+          onChange={(d) => { setSd(d); if (!ed || ed < d) setEd(d); }} />
         <div>
           <label htmlFor="st" className="eyebrow block">Time</label>
           <select id="st" value={st} onChange={(e) => setSt(e.target.value)} className={control}>
             {TIME_SLOTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
-        <div>
-          <label htmlFor="ed" className="eyebrow block">Return date</label>
-          <input id="ed" type="date" min={sd || today} value={ed} onChange={(e) => setEd(e.target.value)} className={control} />
-        </div>
+        <DatePicker id="ed" label="Return date" value={ed} min={sd || today} full={full} onViewMonth={request} onChange={setEd} />
         <div>
           <label htmlFor="et" className="eyebrow block">Time</label>
           <select id="et" value={et} onChange={(e) => setEt(e.target.value)} className={control}>
