@@ -10,7 +10,7 @@ import { ErrorNote, Loading } from "./ui";
 const NAV = [
   ["/admin", "Overview"], ["/admin/bookings", "Bookings"], ["/admin/payments", "Payments"],
   ["/admin/calendar", "Calendar"], ["/admin/inventory", "Inventory"], ["/admin/customers", "Customers"],
-  ["/admin/settings", "Settings"],
+  ["/admin/settings", "Settings"], ["/admin/account", "Account"],
 ] as const;
 
 export function AdminShell({ children }: { children: React.ReactNode }) {

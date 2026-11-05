@@ -1,3 +1,4 @@
+import hashlib
 import re
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -18,15 +19,15 @@ from ..enums import (
     BLOCKING_STATUSES, BookingStatus, FulfillmentMethod, PaymentRecordStatus, PaymentStatus,
 )
 from ..models import (
-    AuditLog, Booking, LoginAttempt, Category, Customer, DeliveryRecord, MaintenancePeriod, PaymentEvidence,
+    AdminSession, AuditLog, Booking, LoginAttempt, Category, Customer, DeliveryRecord, MaintenancePeriod, PaymentEvidence,
     PaymentRecord, Product, ProductImage, User,
 )
 from ..schemas import (
     AdminBookingIn, AdminPaymentIn, BookingPatch, CategoryIn, CategoryOut, CustomerPatch, DeliveryPatch,
-    LoginIn, MaintenanceIn, ProductIn, ProductOut, RescheduleIn, ReviewIn, StatusIn,
+    LoginIn, MaintenanceIn, PasswordChangeIn, ProductIn, ProductOut, RescheduleIn, ReviewIn, StatusIn,
 )
 from ..security import (
-    RateLimiter, create_session, current_admin, destroy_session, require_owner, verify_password,
+    RateLimiter, create_session, current_admin, destroy_session, hash_password, require_owner, verify_password,
 )
 from ..serializers import booking_out, payment_out
 from ..services import (
@@ -89,6 +90,36 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
         destroy_session(db, token)
         db.commit()
     response.delete_cookie(cfg.session_cookie_name, path="/")
+    return {"ok": True}
+
+
+@router.post("/password")
+def change_password(body: PasswordChangeIn, request: Request, user: User = Depends(current_admin),
+                    db: Session = Depends(get_db)):
+    """Changement de mot de passe : exige l'ancien (une session volée ne suffit pas), compte dans le même
+    verrouillage que la connexion, et déconnecte toutes les autres sessions."""
+    now = datetime.now(timezone.utc)
+    key = user.email.lower()
+    recent = db.scalar(select(func.count()).select_from(LoginAttempt).where(
+        LoginAttempt.email == key, LoginAttempt.created_at > now - timedelta(minutes=LOCKOUT_MINUTES)))
+    if recent >= LOCKOUT_FAILURES:
+        raise HTTPException(429, "Too many failed attempts. Try again in a few minutes.")
+    if not verify_password(user.password_hash, body.current_password):
+        db.add(LoginAttempt(email=key))
+        db.commit()
+        raise HTTPException(400, "Your current password is incorrect.")
+    if body.new_password == body.current_password:
+        raise HTTPException(422, "Choose a password different from the current one.")
+    if key.split("@")[0] in body.new_password.lower():
+        raise HTTPException(422, "The password must not contain your email name.")
+    user.password_hash = hash_password(body.new_password)
+    mine = request.cookies.get(cfg.session_cookie_name)
+    others = select(AdminSession).where(AdminSession.user_id == user.id)
+    for s in db.scalars(others):
+        if not mine or s.token_hash != hashlib.sha256(mine.encode()).hexdigest():
+            db.delete(s)
+    audit(db, user.id, "user.password_changed", "user", user.id)
+    db.commit()
     return {"ok": True}
 
 

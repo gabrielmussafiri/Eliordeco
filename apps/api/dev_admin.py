@@ -8,7 +8,7 @@ from pathlib import Path
 
 from app.db import Base, SessionLocal, engine
 from app.enums import UserRole
-from app.models import User
+from app.models import AuditLog, User
 from app.security import hash_password
 
 EMAIL = "dev-admin@example.com"
@@ -22,6 +22,7 @@ with SessionLocal() as db:
     existing = db.query(User).filter_by(email=EMAIL).one_or_none()
     if "--remove" in sys.argv:
         if existing:
+            db.query(AuditLog).filter(AuditLog.user_id == existing.id).delete()
             db.delete(existing)
             db.commit()
         FILE.unlink(missing_ok=True)

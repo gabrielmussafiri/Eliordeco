@@ -205,3 +205,24 @@ def test_login_lockout_survives_across_requests_and_resets_per_account(client):
     assert client.post("/api/admin/login", json={"email": "owner@example.com", "password": "correct-horse-battery"}).status_code == 429
     # un autre compte n'est pas affecté
     assert client.post("/api/admin/login", json={"email": "staff@example.com", "password": "correct-horse-battery"}).status_code == 200
+
+
+def test_change_password_flow(client):
+    login(client)
+    url = "/api/admin/password"
+    ok_pw = "a-brand-new-passphrase-42"
+    assert client.post(url, json={"current_password": "wrong", "new_password": ok_pw}, headers=H).status_code == 400
+    assert client.post(url, json={"current_password": "correct-horse-battery", "new_password": "short"}, headers=H).status_code == 422
+    assert client.post(url, json={"current_password": "correct-horse-battery", "new_password": "correct-horse-battery"}, headers=H).status_code == 422
+    assert client.post(url, json={"current_password": "correct-horse-battery", "new_password": "owner-owner-owner-1"}, headers=H).status_code == 422
+    assert client.post(url, json={"current_password": "correct-horse-battery", "new_password": ok_pw}).status_code == 403  # CSRF
+    # une autre session du même compte sera fermée
+    other = TestClient(app); login(other)
+    assert other.get("/api/admin/me").status_code == 200
+    assert client.post(url, json={"current_password": "correct-horse-battery", "new_password": ok_pw}, headers=H).status_code == 200
+    assert client.get("/api/admin/me").status_code == 200          # la session courante reste ouverte
+    assert other.get("/api/admin/me").status_code == 401           # l'autre est déconnectée
+    fresh = TestClient(app)
+    assert fresh.post("/api/admin/login", json={"email": "owner@example.com", "password": "correct-horse-battery"}).status_code == 401
+    assert fresh.post("/api/admin/login", json={"email": "owner@example.com", "password": ok_pw}).status_code == 200
+    assert TestClient(app).post(url, json={"current_password": "x", "new_password": ok_pw}, headers=H).status_code == 401  # non connecté

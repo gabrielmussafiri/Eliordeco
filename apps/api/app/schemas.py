@@ -156,6 +156,11 @@ class CustomerPatch(BaseModel):
     internal_notes: str = Field(max_length=5000)
 
 
+class PasswordChangeIn(BaseModel):
+    current_password: str = Field(max_length=200)
+    new_password: str = Field(min_length=12, max_length=200)
+
+
 class LoginIn(BaseModel):
     # Pas de validation de format à la connexion : une erreur de forme ne doit pas se distinguer d'un mauvais identifiant.
     email: str = Field(max_length=255)
