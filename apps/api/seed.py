@@ -2,6 +2,7 @@
 Les images sont des visuels de substitution générés (SVG) — à remplacer par de vraies photos via l'admin.
 Usage: python seed.py            (uniquement le produit réel)
        python seed.py --demo     (ajoute des produits de démonstration inventés)"""
+import os
 from decimal import Decimal
 from pathlib import Path
 
@@ -158,6 +159,11 @@ def run(demo: bool = False):
         # le propriétaire les renseigne dans Admin → Settings. Avec --demo, des valeurs d'exemple sont ajoutées.
         base = {"business_address": "Houston, TX & surrounding areas", "delivery_enabled": True, "delivery_fee": "0.00",
                 "payment_methods": ["Zelle", "Cash App", "Bank transfer", "Cash"]}
+        # Coordonnées réelles fournies à l'exécution (variables d'environnement) pour ne rien écrire dans le dépôt.
+        if os.environ.get("SEED_WHATSAPP_NUMBER"):
+            base["whatsapp_number"] = "".join(c for c in os.environ["SEED_WHATSAPP_NUMBER"] if c.isdigit())
+        if os.environ.get("SEED_CONTACT_EMAIL"):
+            base["contact_email"] = os.environ["SEED_CONTACT_EMAIL"]
         if demo:
             base |= {"whatsapp_number": "15555550123", "contact_email": "hello@example.com",
                      "payment_instructions": "Send your deposit to the account provided, then submit the payment details here."}
