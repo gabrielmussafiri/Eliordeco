@@ -206,6 +206,14 @@ class PaymentRecord(Base, TimestampMixin):
     evidence: Mapped[list[PaymentEvidence]] = relationship(cascade="all, delete-orphan")
 
 
+class LoginAttempt(Base):
+    """Échecs de connexion admin, en base : le blocage tient même si l'API tourne sur plusieurs instances."""
+    __tablename__ = "login_attempts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class StoredFile(Base):
     """Fichier binaire (photo produit publique ou reçu privé). Voir app/storage.py."""
     __tablename__ = "stored_files"

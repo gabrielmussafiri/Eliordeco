@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..availability import (
@@ -18,7 +18,7 @@ from ..enums import (
     BLOCKING_STATUSES, BookingStatus, FulfillmentMethod, PaymentRecordStatus, PaymentStatus,
 )
 from ..models import (
-    AuditLog, Booking, Category, Customer, DeliveryRecord, MaintenancePeriod, PaymentEvidence,
+    AuditLog, Booking, LoginAttempt, Category, Customer, DeliveryRecord, MaintenancePeriod, PaymentEvidence,
     PaymentRecord, Product, ProductImage, User,
 )
 from ..schemas import (
@@ -38,6 +38,7 @@ from ..storage import load, read_validated, store
 
 router = APIRouter(prefix="/api/admin")
 limit_login = RateLimiter(8, 300, "login")
+LOCKOUT_FAILURES, LOCKOUT_MINUTES = 8, 15
 secured = [Depends(current_admin)]
 
 
@@ -60,8 +61,18 @@ def unique_slug(db: Session, model, base: str, exclude_id: int | None = None) ->
 
 @router.post("/login", dependencies=[Depends(limit_login)])
 def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == body.email.lower()))
+    email = body.email.strip().lower()[:255]
+    now = datetime.now(timezone.utc)
+    db.execute(delete(LoginAttempt).where(LoginAttempt.created_at < now - timedelta(days=1)))
+    recent = db.scalar(select(func.count()).select_from(LoginAttempt).where(
+        LoginAttempt.email == email, LoginAttempt.created_at > now - timedelta(minutes=LOCKOUT_MINUTES)))
+    if recent >= LOCKOUT_FAILURES:
+        # Même message que pour un mauvais mot de passe côté client ; seul le code 429 indique l'attente.
+        raise HTTPException(429, "Too many failed attempts. Try again in a few minutes.")
+    user = db.scalar(select(User).where(User.email == email))
     if not user or not user.is_active or not verify_password(user.password_hash, body.password):
+        db.add(LoginAttempt(email=email))
+        db.commit()
         raise HTTPException(401, "Invalid credentials")
     token = create_session(db, user)
     db.commit()

@@ -192,3 +192,16 @@ def test_admin_photo_upload_is_stored_and_served(client, umbrella):
     assert client.get(r.json()["url"]).content == PNG
     bad = client.post(f"/api/admin/products/{umbrella.id}/images", headers=H, files={"file": ("a.png", io.BytesIO(b"%PDF-1.4 x"), "image/png")})
     assert bad.status_code == 415   # un PDF n'est pas une photo produit
+
+
+def test_login_lockout_survives_across_requests_and_resets_per_account(client):
+    from app.routers import admin as adm
+    adm.limit_login.hits.clear()
+    for _ in range(adm.LOCKOUT_FAILURES):
+        adm.limit_login.hits.clear()   # isole le blocage en base du limiteur mémoire
+        assert client.post("/api/admin/login", json={"email": "owner@example.com", "password": "wrong"}).status_code == 401
+    adm.limit_login.hits.clear()
+    # même avec le bon mot de passe, le compte est verrouillé : un attaquant ne peut pas deviner en boucle
+    assert client.post("/api/admin/login", json={"email": "owner@example.com", "password": "correct-horse-battery"}).status_code == 429
+    # un autre compte n'est pas affecté
+    assert client.post("/api/admin/login", json={"email": "staff@example.com", "password": "correct-horse-battery"}).status_code == 200
