@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/* ───────── Design tokens — Favor Upon You Rentals ─────────
+   Les teintes de la palette de marque sont conservées ; deux variantes plus
+   foncées (--color-olive-deep, --color-ink-soft) servent au texte et aux
+   boutons pour garder un contraste AA sur l'ivoire. */
+@theme {
+  --color-ivory: #f8f6f1;
+  --color-cream: #eeeae1;
+  --color-espresso: #29251f;
+  --color-ink-soft: #6a6154;      /* texte secondaire, 5.5:1 sur ivoire */
+  --color-taupe: #a69a89;         /* filets, détails décoratifs uniquement */
+  --color-olive: #737a61;
+  --color-olive-deep: #555c45;    /* texte/boutons olive, 6.5:1 sur ivoire */
+  --color-white: #ffffff;
+  --color-line: #ddd6c8;
+  --color-danger: #9b3b2e;
+  --color-success: #4f6b3f;
+
+  --font-display: var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
+  --font-sans: var(--font-manrope), system-ui, sans-serif;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root {
+  --gutter: clamp(1.25rem, 4vw, 3.5rem);
+  --measure: 62rem;
+}
+
+html {
+  background: var(--color-ivory);
+  color: var(--color-espresso);
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.65;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--color-olive); color: var(--color-white); }
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-olive-deep);
+    outline-offset: 3px;
+  }
+}
+
+/* ───────── Typographie ───────── */
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+}
+.h-xl { font-size: clamp(2.75rem, 7.2vw, 6.25rem); }
+.h-lg { font-size: clamp(2.25rem, 4.6vw, 4rem); }
+.h-md { font-size: clamp(1.75rem, 2.8vw, 2.5rem); line-height: 1.05; }
+.h-sm { font-size: 1.5rem; line-height: 1.15; }
+
+.eyebrow {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-olive-deep);
+}
+.lede { font-size: clamp(1.05rem, 1.4vw, 1.2rem); line-height: 1.7; color: var(--color-ink-soft); max-width: 34rem; }
+
+/* ───────── Mise en page ───────── */
+.shell { width: 100%; max-width: 90rem; margin-inline: auto; padding-inline: var(--gutter); }
+.rule { border: 0; border-top: 1px solid var(--color-line); }
+
+/* Lien éditorial : soulignement qui se dessine au survol */
+.link-draw {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.45s var(--ease-out-soft);
+}
+.link-draw:hover, .link-draw[aria-current="page"] { background-size: 100% 1px; }
+
+/* Image : recadrage éditorial + zoom lent au survol du parent .group */
+.frame { overflow: hidden; background: var(--color-cream); }
+.frame > img { width: 100%; height: 100%; object-fit: cover; transition: transform 1.2s var(--ease-out-soft); }
+.group:hover .frame > img { transform: scale(1.035); }
+
+/* Apparition douce, désactivée si l'utilisateur réduit les animations */
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise 0.9s var(--ease-out-soft) both; }
+.rise-2 { animation-delay: 0.12s; }
+.rise-3 { animation-delay: 0.24s; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ───────── Administration : tableaux denses à filets fins ───────── */
+.tbl { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.tbl th { text-align: left; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--color-ink-soft); padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--color-espresso); white-space: nowrap; }
+.tbl td { padding: 0.85rem 0.75rem; border-bottom: 1px solid var(--color-line); vertical-align: top; }
+.tbl tbody tr:hover td { background: rgb(238 234 225 / 0.5); }
+.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
